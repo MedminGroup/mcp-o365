@@ -36,3 +36,4 @@ jobs:
           files: |
             dist/index.js
             install.sh
+            install.ps1
