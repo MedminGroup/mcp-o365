@@ -4,11 +4,17 @@ import { loadConfig } from './config';
 import { AccountManager } from './auth';
 import { createGraphClient } from './graph/client';
 import { registerAllTools } from './tools';
+import { runSetup } from './setup';
 
-const version = '1.0.0'; // keep in sync with package.json
+const version = '1.0.1'; // keep in sync with package.json
 
 async function main(): Promise<void> {
   const config = loadConfig();
+
+  if (process.argv.includes('--setup')) {
+    await runSetup(config.clientId, config.cachePath);
+    process.exit(0);
+  }
 
   // Single MSAL instance, shared token cache — supports multiple signed-in accounts
   const accountManager = new AccountManager(config);

@@ -1,33 +1,26 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────────────────────────
-# Medmin mcp-o365 installer
-# Installs the mcp-o365 MCP server and Teams Meeting Analyser skill for
-# Claude Code.
+# Medmin mcp-o365 installer (Mac / Linux)
 #
-# Standard usage (fetches the latest GitHub release automatically):
-#   curl -fsSL https://raw.githubusercontent.com/GITHUB_REPO/main/install.sh | bash
+# Standard usage — paste into Terminal and press Enter:
+#   curl -fsSL https://raw.githubusercontent.com/MedminGroup/mcp-o365/main/install.sh | bash
 #
-# Or with a local build (for development / testing):
+# Dev / testing (local build):
 #   bash install.sh --source /path/to/mcp-O365/dist/index.js
 #
-# Requirements: Node.js >= 20, Claude Code
+# Installs Node.js automatically if missing (via nvm, no admin required).
+# Requires: Claude Code
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-# ── GitHub repo (owner/name) ───────────────────────────────────────────────────
-# Set this once after creating the repo, then all users get the latest release
-# automatically via the curl | bash one-liner above.
 GITHUB_REPO="MedminGroup/mcp-o365"
-
-# ── Medmin Azure app registration ─────────────────────────────────────────────
 AZURE_CLIENT_ID="1cef0b95-5220-4bfa-a2f4-661da5cfcc55"
 AZURE_TENANT_ID="389366c7-63a8-42d0-8a1f-1df099d3eec1"
-
-# ── Install paths ──────────────────────────────────────────────────────────────
 INSTALL_DIR="$HOME/.medmin/mcp-o365"
 PLUGIN_NAME="medmin-skills"
 PLUGIN_VERSION="1.0.0"
 SKILL_NAME="teams-meeting-analyser"
+NVM_VERSION="0.40.3"
 
 # ── Colours ────────────────────────────────────────────────────────────────────
 if [ -t 1 ]; then
@@ -35,14 +28,13 @@ if [ -t 1 ]; then
 else
   GRN='' YLW='' RED='' BLD='' NC=''
 fi
+info()   { echo -e "${GRN}▶${NC} $*"; }
+warn()   { echo -e "${YLW}⚠${NC}  $*"; }
+error()  { echo -e "${RED}✗${NC}  $*" >&2; exit 1; }
+ok()     { echo -e "${GRN}✓${NC} $*"; }
+header() { echo -e "\n${BLD}── $* ──${NC}"; }
 
-info()    { echo -e "${GRN}▶${NC} $*"; }
-warn()    { echo -e "${YLW}⚠${NC}  $*"; }
-error()   { echo -e "${RED}✗${NC}  $*" >&2; exit 1; }
-ok()      { echo -e "${GRN}✓${NC} $*"; }
-header()  { echo -e "\n${BLD}── $* ──${NC}"; }
-
-# ── Parse arguments ────────────────────────────────────────────────────────────
+# ── Arguments ──────────────────────────────────────────────────────────────────
 LOCAL_SOURCE=""
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -51,98 +43,86 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ── Prerequisites ──────────────────────────────────────────────────────────────
-header "Checking prerequisites"
+# ── Node.js ────────────────────────────────────────────────────────────────────
+header "Checking Node.js"
+
+install_node_via_nvm() {
+  info "Installing Node.js via nvm (no admin required)..."
+  export NVM_DIR="$HOME/.nvm"
+  curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
+  # Source nvm in the current script session
+  [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+  nvm install 22 2>&1 | grep -E 'Now using|Downloading|installed' || true
+  nvm use 22 >/dev/null 2>&1
+  ok "Node.js $(node --version) installed via nvm"
+}
+
+# Source nvm if it's already installed but not on PATH
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
 if ! command -v node &>/dev/null; then
-  error "Node.js is not installed. Install Node.js 20 or later from https://nodejs.org then re-run this script."
+  install_node_via_nvm
+elif [[ "$(node -e "process.stdout.write(process.version.slice(1).split('.')[0])")" -lt 20 ]]; then
+  warn "Node.js $(node --version) is too old (need 20+). Installing a newer version..."
+  install_node_via_nvm
+else
+  ok "Node.js $(node --version)"
 fi
 
-NODE_MAJOR=$(node -e "process.stdout.write(process.version.slice(1).split('.')[0])")
-if [[ "$NODE_MAJOR" -lt 20 ]]; then
-  error "Node.js $(node --version) found, but version 20+ is required. Update from https://nodejs.org"
-fi
-ok "Node.js $(node --version)"
-
+# ── Claude Code ────────────────────────────────────────────────────────────────
 CLAUDE_JSON="$HOME/.claude.json"
-if [[ ! -f "$CLAUDE_JSON" ]]; then
-  error "Claude Code config not found at $CLAUDE_JSON — install Claude Code first."
-fi
-ok "Claude Code config found"
+[[ -f "$CLAUDE_JSON" ]] || error "Claude Code not found ($CLAUDE_JSON missing). Install Claude Code first: https://claude.ai/download"
 
-
-# ── Install MCP server ─────────────────────────────────────────────────────────
+# ── Download / copy MCP server ─────────────────────────────────────────────────
 header "Installing MCP server"
 
 mkdir -p "$INSTALL_DIR"
 DIST_FILE="$INSTALL_DIR/index.js"
 
 if [[ -n "$LOCAL_SOURCE" ]]; then
-  if [[ ! -f "$LOCAL_SOURCE" ]]; then
-    error "Source file not found: $LOCAL_SOURCE"
-  fi
+  [[ -f "$LOCAL_SOURCE" ]] || error "Source file not found: $LOCAL_SOURCE"
   info "Copying from $LOCAL_SOURCE"
   cp "$LOCAL_SOURCE" "$DIST_FILE"
 else
-  # Resolve latest release download URL from GitHub API
-  if [[ "$GITHUB_REPO" == "GITHUB_ORG/mcp-o365" ]]; then
-    error "GITHUB_REPO is not set in install.sh. Update it to your GitHub org/repo name."
-  fi
-
   RELEASES_API="https://api.github.com/repos/$GITHUB_REPO/releases/latest"
-  info "Fetching latest release info from $RELEASES_API"
-
-  if command -v curl &>/dev/null; then
-    RELEASE_JSON=$(curl -fsSL "$RELEASES_API")
-    DIST_URL=$(echo "$RELEASE_JSON" | python3 -c "
+  info "Fetching latest release..."
+  RELEASE_JSON=$(curl -fsSL "$RELEASES_API")
+  DIST_URL=$(echo "$RELEASE_JSON" | python3 -c "
 import json,sys
 assets = json.load(sys.stdin).get('assets', [])
 match = next((a['browser_download_url'] for a in assets if a['name'] == 'index.js'), None)
-if not match: raise SystemExit('index.js not found in latest release assets')
+if not match: raise SystemExit('index.js not found in latest release')
 print(match)
 ")
-    info "Downloading $DIST_URL"
-    curl -fsSL "$DIST_URL" -o "$DIST_FILE"
-  else
-    error "curl is required. Install it and re-run."
-  fi
+  info "Downloading $DIST_URL"
+  curl -fsSL "$DIST_URL" -o "$DIST_FILE"
 fi
 
 ok "MCP server installed to $DIST_FILE"
 
-# ── Configure Claude Code MCP server ──────────────────────────────────────────
+# ── Configure Claude Code ──────────────────────────────────────────────────────
 header "Configuring Claude Code"
 
 python3 - "$CLAUDE_JSON" "$DIST_FILE" "$AZURE_CLIENT_ID" "$AZURE_TENANT_ID" <<'PYEOF'
 import json, sys, os
-
-claude_json, dist_file, client_id, tenant_id = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-
+claude_json, dist_file, client_id, tenant_id = sys.argv[1:]
 with open(claude_json) as f:
     config = json.load(f)
-
 config.setdefault("mcpServers", {})
-existing = config["mcpServers"].get("mcp-o365")
+existed = "mcp-o365" in config["mcpServers"]
 config["mcpServers"]["mcp-o365"] = {
-    "type": "stdio",
-    "command": "node",
-    "args": [dist_file],
-    "env": {
-        "AZURE_CLIENT_ID": client_id,
-        "AZURE_TENANT_ID": tenant_id
-    }
+    "type": "stdio", "command": "node", "args": [dist_file],
+    "env": {"AZURE_CLIENT_ID": client_id, "AZURE_TENANT_ID": tenant_id}
 }
-
 with open(claude_json, "w") as f:
     json.dump(config, f, indent=2)
-
-action = "Updated" if existing else "Registered"
-print(f"{action} mcp-o365 in Claude Code config.")
+print(("Updated" if existed else "Registered") + " mcp-o365.")
 PYEOF
 
 ok "mcp-o365 registered in Claude Code"
 
-# ── Install Teams Meeting Analyser skill ───────────────────────────────────────
+# ── Install skill ──────────────────────────────────────────────────────────────
 header "Installing Teams Meeting Analyser skill"
 
 SKILL_DIR="$HOME/.claude/plugins/cache/local-plugins/$PLUGIN_NAME/$PLUGIN_VERSION/skills/$SKILL_NAME"
@@ -192,59 +172,51 @@ Call `accounts_list` to get the user's account identifier. Use that value as the
 ### 1. Find the calendar event
 
 Use `calendar_list_events` to locate the meeting. Ask the user for the date if not
-provided. Search a ±1 day window to allow for timezone differences.
+provided. Search a +/-1 day window to allow for timezone differences.
 
-```
-calendar_list_events(
-  account="<from accounts_list>",
-  start="<date>T00:00:00",
-  end="<date>T23:59:59"
-)
-```
+    calendar_list_events(
+      account="<from accounts_list>",
+      start="<date>T00:00:00",
+      end="<date>T23:59:59"
+    )
 
 Note the event's `joinWebUrl` from the response. If the event has no `joinWebUrl`
 it was not a Teams meeting and has no transcript.
 
 ### 2. Get the online meeting ID
 
-```
-meetings_get_by_join_url(
-  join_url="<joinWebUrl from step 1>",
-  account="<account>"
-)
-```
+    meetings_get_by_join_url(
+      join_url="<joinWebUrl from step 1>",
+      account="<account>"
+    )
 
 Note the `id` field from the response.
 
 ### 3. List transcripts
 
-```
-meetings_list_transcripts(
-  meeting_id="<id from step 2>",
-  account="<account>"
-)
-```
+    meetings_list_transcripts(
+      meeting_id="<id from step 2>",
+      account="<account>"
+    )
 
 For recurring meetings, multiple transcripts will be listed. Match by
 `createdDateTime` to find the correct occurrence. Note the target transcript's `id`.
 
 ### 4. Download the VTT transcript
 
-```
-meetings_get_transcript(
-  meeting_id="<id from step 2>",
-  transcript_id="<id from step 3>",
-  account="<account>"
-)
-```
+    meetings_get_transcript(
+      meeting_id="<id from step 2>",
+      transcript_id="<id from step 3>",
+      account="<account>"
+    )
 
-The response is raw VTT text with speaker labels (`<v Speaker Name>`) and timestamps.
+The response is raw VTT text with speaker labels and timestamps.
 
 ### 5. Validate the transcript
 
 Before analysing, extract basic stats from the VTT:
 
-- All unique speaker names (from `<v ...>` tags)
+- All unique speaker names (from <v ...> tags)
 - Turn count per speaker
 - Approximate duration (last timestamp minus first)
 
@@ -282,7 +254,6 @@ Minimum 3 strengths, minimum 4 growth opportunities, all with timestamps.
 
 ## Output Format
 
-```markdown
 # Meeting Insights Summary — [Name]
 **Meeting:** [Name] | [Date] | [Duration]
 **Participants:** [List]
@@ -303,8 +274,7 @@ Minimum 3 strengths, minimum 4 growth opportunities, all with timestamps.
 [Numbered list with timestamps and better alternatives]
 
 ## Summary
-[2–3 sentence overall assessment]
-```
+[2-3 sentence overall assessment]
 
 ## Saving Outputs
 
@@ -318,10 +288,8 @@ Save analysis files to ~/Downloads/ with the naming convention:
 - Teams only generates a transcript if "Start transcription" was active during the
   meeting. If the transcripts list is empty, no transcript was recorded.
 - `meetings_get_by_join_url` only works for meetings organised by the signed-in account.
-  If the user was an attendee (not the organiser), the lookup will return no results —
-  ask them to try with the organiser's account.
-- If `meetings_get_transcript` returns a 403, the Azure app registration is missing
-  `OnlineMeetingTranscript.Read.All` admin consent — contact your administrator.
+  If the user was an attendee (not the organiser), the lookup will return no results.
+- If `meetings_get_transcript` returns a 403, contact your administrator.
 
 ## Example Prompts
 
@@ -333,48 +301,31 @@ SKILL_EOF
 
 ok "Skill file written"
 
-# Register the plugin in installed_plugins.json
-PLUGINS_JSON="$HOME/.claude/plugins/installed_plugins.json"
-
-python3 - "$PLUGINS_JSON" "$PLUGIN_NAME" "$PLUGIN_VERSION" <<'PYEOF'
+python3 - "$HOME/.claude/plugins/installed_plugins.json" "$PLUGIN_NAME" "$PLUGIN_VERSION" \
+         "$HOME/.claude/plugins/cache/local-plugins/$PLUGIN_NAME/$PLUGIN_VERSION" <<'PYEOF'
 import json, sys, os, datetime
-
-plugins_file, plugin_name, plugin_version = sys.argv[1], sys.argv[2], sys.argv[3]
-
-if os.path.exists(plugins_file):
-    with open(plugins_file) as f:
-        plugins = json.load(f)
-else:
-    plugins = {"version": 2, "plugins": {}}
-
-key = f"{plugin_name}@local-plugins"
+plugins_file, name, version, install_path = sys.argv[1:]
+plugins = json.load(open(plugins_file)) if os.path.exists(plugins_file) else {"version": 2, "plugins": {}}
+key = f"{name}@local-plugins"
 now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-install_path = os.path.expanduser(f"~/.claude/plugins/cache/local-plugins/{plugin_name}/{plugin_version}")
-
-plugins["plugins"][key] = [{
-    "scope": "user",
-    "installPath": install_path,
-    "version": plugin_version,
-    "installedAt": now,
-    "lastUpdated": now
-}]
-
-with open(plugins_file, "w") as f:
-    json.dump(plugins, f, indent=2)
+plugins["plugins"][key] = [{"scope":"user","installPath":install_path,"version":version,"installedAt":now,"lastUpdated":now}]
+json.dump(plugins, open(plugins_file,"w"), indent=2)
 print(f"Plugin '{key}' registered.")
 PYEOF
 
 ok "Teams Meeting Analyser skill installed"
 
-# ── Done ───────────────────────────────────────────────────────────────────────
-echo
-echo -e "${BLD}── Installation complete ──${NC}"
-echo
-echo "  Next steps:"
-echo "  1. Restart Claude Code (quit and reopen), or run /reload-plugins"
-echo "  2. In a new Claude conversation, type: accounts_add"
-echo "  3. Open the link shown and sign in with your medmin.co.uk account"
-echo "  4. Type: accounts_complete"
-echo "  5. You're ready. Try:"
-echo "       \"Analyse last week's [meeting name] for [your name]\""
-echo
+# ── Sign-in wizard ─────────────────────────────────────────────────────────────
+header "Signing in to Microsoft 365"
+echo ""
+echo "  A browser window will open — sign in with your medmin.co.uk account."
+echo "  If it doesn't open automatically, use the URL printed below."
+echo ""
+
+AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
+AZURE_TENANT_ID="$AZURE_TENANT_ID" \
+  node "$DIST_FILE" --setup
+
+echo ""
+ok "All done! Restart Claude Code and you're ready."
+echo ""
