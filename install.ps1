@@ -12,8 +12,31 @@
 # ──────────────────────────────────────────────────────────────────────────────
 param([string]$Source = "")
 
+# ── Logging — captures everything to a file ────────────────────────────────────
+$LogFile = Join-Path $env:TEMP "medmin-install-log.txt"
+Start-Transcript -Path $LogFile -Force | Out-Null
+Write-Host "  [log] Full log: $LogFile" -ForegroundColor DarkGray
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# Wrap entire script in try/catch so errors are always visible before exit
+trap {
+    Write-Host ""
+    Write-Host "  ================================================================" -ForegroundColor Red
+    Write-Host "  INSTALL FAILED" -ForegroundColor Red
+    Write-Host "  ================================================================" -ForegroundColor Red
+    Write-Host "  Error: $_" -ForegroundColor Red
+    Write-Host "  At:    $($_.InvocationInfo.PositionMessage)" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  Full log saved to: $LogFile" -ForegroundColor Yellow
+    Write-Host "  Send that file to your administrator." -ForegroundColor Yellow
+    Write-Host "  ================================================================" -ForegroundColor Red
+    Write-Host ""
+    Stop-Transcript | Out-Null
+    Read-Host "  Press Enter to close"
+    break
+}
 
 $GitHubRepo    = "MedminGroup/mcp-o365"
 $AzureClientId = "1cef0b95-5220-4bfa-a2f4-661da5cfcc55"
@@ -93,6 +116,14 @@ if (-not $node) {
         Ok "Node.js $(node --version)"
     }
 }
+
+# Verify node is actually reachable after any install
+Info "Verifying node is on PATH..."
+$nodeExe = Get-Command node -ErrorAction SilentlyContinue
+if (-not $nodeExe) {
+    throw "node.exe not found on PATH after install. PATH is: $env:PATH"
+}
+Ok "node is at $($nodeExe.Source) — $(node --version)"
 
 # ── Claude Code ────────────────────────────────────────────────────────────────
 $claudeJson = Join-Path $HOME ".claude.json"
@@ -254,3 +285,5 @@ node $DistFile --setup
 Write-Host ""
 Ok "All done! Restart Claude Code and you're ready."
 Write-Host ""
+Stop-Transcript | Out-Null
+Read-Host "  Press Enter to close"
