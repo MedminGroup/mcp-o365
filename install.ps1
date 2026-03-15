@@ -126,9 +126,38 @@ if (-not $nodeExe) {
 Ok "node is at $($nodeExe.Source) — $(node --version)"
 
 # ── Claude Code ────────────────────────────────────────────────────────────────
-$claudeJson = Join-Path $HOME ".claude.json"
-if (-not (Test-Path $claudeJson)) {
-    Fail "Claude Code not found ($claudeJson missing). Install Claude Code first: https://claude.ai/download"
+Header "Locating Claude Code config"
+
+# Claude Code may not have been launched yet (config created on first run).
+# Search the known locations; create a minimal one if none found.
+$claudeJsonCandidates = @(
+    (Join-Path $HOME ".claude.json"),
+    (Join-Path $env:APPDATA "Claude\claude.json"),
+    (Join-Path $env:LOCALAPPDATA "Claude\claude.json"),
+    (Join-Path $env:APPDATA "claude-code\claude.json")
+)
+
+$claudeJson = $null
+foreach ($candidate in $claudeJsonCandidates) {
+    Info "Checking $candidate"
+    if (Test-Path $candidate) {
+        $claudeJson = $candidate
+        Ok "Found Claude Code config at $claudeJson"
+        break
+    }
+}
+
+if (-not $claudeJson) {
+    # Check Claude Code binary exists at all
+    $claudeBin = Get-Command claude -ErrorAction SilentlyContinue
+    if (-not $claudeBin) {
+        Fail "Claude Code does not appear to be installed. Download it from https://claude.ai/download and run it once before re-running this installer."
+    }
+    # Claude is installed but config not yet created — create a minimal one
+    $claudeJson = Join-Path $HOME ".claude.json"
+    Warn "Claude Code config not found (Claude not yet launched?). Creating minimal config at $claudeJson"
+    '{"mcpServers":{}}' | Set-Content $claudeJson -Encoding UTF8
+    Ok "Created $claudeJson"
 }
 
 # ── Download / copy MCP server ─────────────────────────────────────────────────
