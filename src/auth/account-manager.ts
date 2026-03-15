@@ -3,10 +3,12 @@ import type { Config } from '../config';
 
 // ── OAuth2 endpoints (common = any tenant + personal accounts) ────────────────
 
-const DEVICE_CODE_URL =
-  'https://login.microsoftonline.com/common/oauth2/v2.0/devicecode';
-const TOKEN_URL =
-  'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+function deviceCodeUrl(tenantId: string): string {
+  return `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/devicecode`;
+}
+function tokenUrl(tenantId: string): string {
+  return `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+}
 
 const SCOPES = [
   'openid',
@@ -97,6 +99,7 @@ async function post(url: string, params: Record<string, string>): Promise<Record
  */
 export class AccountManager {
   private clientId: string;
+  private tenantId: string;
   private cachePath: string;
 
   /**
@@ -107,6 +110,7 @@ export class AccountManager {
 
   constructor(config: Config) {
     this.clientId = config.clientId;
+    this.tenantId = config.tenantId;
     this.cachePath = config.cachePath;
   }
 
@@ -157,7 +161,7 @@ export class AccountManager {
     account: StoredAccount,
     cache: TokenCache,
   ): Promise<StoredAccount> {
-    const data = await post(TOKEN_URL, {
+    const data = await post(tokenUrl(this.tenantId), {
       grant_type: 'refresh_token',
       refresh_token: account.refreshToken,
       client_id: this.clientId,
@@ -219,7 +223,7 @@ export class AccountManager {
 
       const run = async (): Promise<void> => {
         // ── Step 1: request a device code ──────────────────────────────────
-        const dc = await post(DEVICE_CODE_URL, {
+        const dc = await post(deviceCodeUrl(this.tenantId), {
           client_id: this.clientId,
           scope: SCOPES,
         });
@@ -270,7 +274,7 @@ export class AccountManager {
     while (true) {
       await sleep(interval * 1000);
 
-      const data = await post(TOKEN_URL, {
+      const data = await post(tokenUrl(this.tenantId), {
         grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
         device_code: deviceCode,
         client_id: this.clientId,

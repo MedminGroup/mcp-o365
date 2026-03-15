@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
 
   if (process.argv.includes('--setup')) {
-    await runSetup(config.clientId, config.cachePath);
+    await runSetup(config.clientId, config.tenantId, config.cachePath);
     process.exit(0);
   }
 

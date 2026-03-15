@@ -2,8 +2,8 @@ import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { exec } from 'node:child_process';
 
-const DEVICE_CODE_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/devicecode';
-const TOKEN_URL       = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+const deviceCodeUrl = (t: string) => `https://login.microsoftonline.com/${t}/oauth2/v2.0/devicecode`;
+const tokenUrl      = (t: string) => `https://login.microsoftonline.com/${t}/oauth2/v2.0/token`;
 const GRAPH_ME_URL    = 'https://graph.microsoft.com/v1.0/me';
 
 const SCOPES = [
@@ -70,9 +70,9 @@ function findFreePort(start: number): Promise<number> {
 
 // ── Device-code flow ──────────────────────────────────────────────────────────
 
-function startDeviceCodeFlow(clientId: string, cachePath: string): void {
+function startDeviceCodeFlow(clientId: string, tenantId: string, cachePath: string): void {
   (async () => {
-    const dc = await post(DEVICE_CODE_URL, { client_id: clientId, scope: SCOPES });
+    const dc = await post(deviceCodeUrl(tenantId), { client_id: clientId, scope: SCOPES });
 
     if (!dc.device_code) {
       state = { status: 'error', message: String(dc.error_description ?? dc.error ?? 'Failed to get device code') };
@@ -91,7 +91,7 @@ function startDeviceCodeFlow(clientId: string, cachePath: string): void {
     while (true) {
       await new Promise(r => setTimeout(r, interval * 1000));
 
-      const data = await post(TOKEN_URL, {
+      const data = await post(tokenUrl(tenantId), {
         grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
         device_code: String(dc.device_code),
         client_id: clientId,
@@ -152,6 +152,7 @@ function startDeviceCodeFlow(clientId: string, cachePath: string): void {
 
 function handleRequest(
   clientId: string,
+  tenantId: string,
   cachePath: string,
   req: IncomingMessage,
   res: ServerResponse,
@@ -162,7 +163,7 @@ function handleRequest(
   if (url === '/api/start' && req.method === 'POST') {
     if (state.status === 'idle' || state.status === 'error') {
       state = { status: 'idle' };
-      startDeviceCodeFlow(clientId, cachePath);
+      startDeviceCodeFlow(clientId, tenantId, cachePath);
     }
     // Wait briefly for the device code to arrive
     setTimeout(() => {
@@ -202,11 +203,11 @@ function handleRequest(
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export async function runSetup(clientId: string, cachePath: string): Promise<void> {
+export async function runSetup(clientId: string, tenantId: string, cachePath: string): Promise<void> {
   const port = await findFreePort(3847);
   const url  = `http://localhost:${port}`;
 
-  const server = createServer(handleRequest.bind(null, clientId, cachePath));
+  const server = createServer(handleRequest.bind(null, clientId, tenantId, cachePath));
 
   await new Promise<void>(resolve => server.listen(port, '127.0.0.1', resolve));
 
