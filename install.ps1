@@ -151,9 +151,38 @@ Ok "MCP server installed to $DistFile"
 # ── Configure Claude desktop app ───────────────────────────────────────────────
 Header "Configuring Claude desktop app"
 
-$ClaudeConfigDir = Join-Path $env:APPDATA "Claude"
-$ClaudeConfig    = Join-Path $ClaudeConfigDir "claude_desktop_config.json"
+# Claude installed from Microsoft Store uses a sandboxed path under LocalAppData\Packages.
+# Claude installed directly uses the standard %APPDATA%\Claude path.
+# We probe both and use whichever exists, preferring the Store path.
+$ClaudeConfigDir = $null
 
+# 1. Try known Store package name (publisher hash is consistent for Anthropic's app)
+$storePath = Join-Path $env:LOCALAPPDATA "Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude"
+if (Test-Path $storePath) {
+    $ClaudeConfigDir = $storePath
+    Info "Found Microsoft Store install at $storePath"
+}
+
+# 2. Wildcard search in case publisher hash differs
+if (-not $ClaudeConfigDir) {
+    $pkgDir = Join-Path $env:LOCALAPPDATA "Packages"
+    $match  = Get-ChildItem $pkgDir -Filter "Claude_*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($match) {
+        $candidate = Join-Path $match.FullName "LocalCache\Roaming\Claude"
+        if (Test-Path $candidate) {
+            $ClaudeConfigDir = $candidate
+            Info "Found Microsoft Store install at $candidate"
+        }
+    }
+}
+
+# 3. Fall back to standard direct-install path
+if (-not $ClaudeConfigDir) {
+    $ClaudeConfigDir = Join-Path $env:APPDATA "Claude"
+    Info "Using standard install path at $ClaudeConfigDir"
+}
+
+$ClaudeConfig = Join-Path $ClaudeConfigDir "claude_desktop_config.json"
 New-Item -ItemType Directory -Force -Path $ClaudeConfigDir | Out-Null
 
 # Create a minimal config if it doesn't exist
