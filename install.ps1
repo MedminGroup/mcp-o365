@@ -7,7 +7,8 @@
 # Dev / testing (local build):
 #   .\install.ps1 -Source C:\path\to\mcp-O365\dist\index.js
 #
-# Installs Node.js and Claude Code CLI automatically if missing (no admin required).
+# Installs Node.js automatically if missing (no admin required).
+# Configures the Claude desktop app — no Claude Code CLI needed.
 # ──────────────────────────────────────────────────────────────────────────────
 param([string]$Source = "")
 
@@ -41,9 +42,6 @@ $GitHubRepo    = "MedminGroup/mcp-o365"
 $AzureClientId = "1cef0b95-5220-4bfa-a2f4-661da5cfcc55"
 $AzureTenantId = "389366c7-63a8-42d0-8a1f-1df099d3eec1"
 $InstallDir    = Join-Path $HOME ".medmin\mcp-o365"
-$PluginName    = "medmin-skills"
-$PluginVersion = "1.0.0"
-$SkillName     = "teams-meeting-analyser"
 $NodeDir       = Join-Path $env:LOCALAPPDATA "Programs\nodejs"
 
 function Info($m)   { Write-Host "  [>] $m" -ForegroundColor Cyan }
@@ -124,49 +122,6 @@ if (-not $nodeExe) {
 }
 Ok "node is at $($nodeExe.Source) — $(node --version)"
 
-# ── Claude Code CLI ────────────────────────────────────────────────────────────
-Header "Checking Claude Code CLI"
-
-$claudeCli = Get-Command claude -ErrorAction SilentlyContinue
-if (-not $claudeCli) {
-    Info "Installing Claude Code CLI (this may take a minute)..."
-    npm install -g @anthropic-ai/claude-code
-    $claudeCli = Get-Command claude -ErrorAction SilentlyContinue
-    if (-not $claudeCli) {
-        throw "claude command not found after npm install. PATH is: $env:PATH"
-    }
-    Ok "Claude Code CLI installed: $(claude --version 2>&1 | Select-Object -First 1)"
-} else {
-    Ok "Claude Code CLI: $(claude --version 2>&1 | Select-Object -First 1)"
-}
-
-# ── Claude Code config ─────────────────────────────────────────────────────────
-Header "Locating Claude Code config"
-
-# Config is created on first launch — if it doesn't exist yet, create a minimal one.
-$claudeJsonCandidates = @(
-    (Join-Path $HOME ".claude.json"),
-    (Join-Path $env:APPDATA "Claude\claude.json"),
-    (Join-Path $env:LOCALAPPDATA "Claude\claude.json"),
-    (Join-Path $env:APPDATA "claude-code\claude.json")
-)
-
-$claudeJson = $null
-foreach ($candidate in $claudeJsonCandidates) {
-    if (Test-Path $candidate) {
-        $claudeJson = $candidate
-        Ok "Found config at $claudeJson"
-        break
-    }
-}
-
-if (-not $claudeJson) {
-    $claudeJson = Join-Path $HOME ".claude.json"
-    Info "Config not yet created — writing minimal config at $claudeJson"
-    '{"mcpServers":{}}' | Set-Content $claudeJson -Encoding UTF8
-    Ok "Created $claudeJson"
-}
-
 # ── Download / copy MCP server ─────────────────────────────────────────────────
 Header "Installing MCP server"
 
@@ -193,10 +148,21 @@ if ($Source -ne "") {
 }
 Ok "MCP server installed to $DistFile"
 
-# ── Configure Claude Code ──────────────────────────────────────────────────────
-Header "Configuring Claude Code"
+# ── Configure Claude desktop app ───────────────────────────────────────────────
+Header "Configuring Claude desktop app"
 
-$config  = Get-Content $claudeJson -Raw | ConvertFrom-Json
+$ClaudeConfigDir = Join-Path $env:APPDATA "Claude"
+$ClaudeConfig    = Join-Path $ClaudeConfigDir "claude_desktop_config.json"
+
+New-Item -ItemType Directory -Force -Path $ClaudeConfigDir | Out-Null
+
+# Create a minimal config if it doesn't exist
+if (-not (Test-Path $ClaudeConfig)) {
+    Info "Creating new config at $ClaudeConfig"
+    '{"mcpServers":{}}' | Set-Content $ClaudeConfig -Encoding UTF8
+}
+
+$config = Get-Content $ClaudeConfig -Raw | ConvertFrom-Json
 $existed = $false
 
 if (-not $config.PSObject.Properties["mcpServers"]) {
@@ -205,7 +171,6 @@ if (-not $config.PSObject.Properties["mcpServers"]) {
 if ($config.mcpServers.PSObject.Properties["mcp-o365"]) { $existed = $true }
 
 $entry = [PSCustomObject]@{
-    type    = "stdio"
     command = "node"
     args    = @($DistFile)
     env     = [PSCustomObject]@{ AZURE_CLIENT_ID = $AzureClientId; AZURE_TENANT_ID = $AzureTenantId }
@@ -213,189 +178,8 @@ $entry = [PSCustomObject]@{
 if ($existed) { $config.mcpServers."mcp-o365" = $entry }
 else          { $config.mcpServers | Add-Member -NotePropertyName "mcp-o365" -NotePropertyValue $entry }
 
-$config | ConvertTo-Json -Depth 10 | Set-Content $claudeJson -Encoding UTF8
-Ok ($(if ($existed) { "Updated" } else { "Registered" }) + " mcp-o365 in Claude Code")
-
-# ── Install skills ─────────────────────────────────────────────────────────────
-Header "Installing Medmin skills"
-
-# ── Skill 1: Teams Meeting Analyser ───────────────────────────────────────────
-
-$skillDir = Join-Path $HOME ".claude\plugins\cache\local-plugins\$PluginName\$PluginVersion\skills\$SkillName"
-New-Item -ItemType Directory -Force -Path $skillDir | Out-Null
-
-# Write skill file (no backtick-heavy heredoc needed — use Set-Content)
-$skillContent = @'
----
-name: teams-meeting-analyser
-description: Fetches Microsoft Teams meeting transcripts via the mcp-o365 MCP server and analyses communication patterns, speaking ratios, filler words, conflict avoidance, facilitation style, and key decisions for any named participant. Use when asked to analyse a Teams meeting, a meeting transcript, or a person's communication style in a recorded meeting.
----
-
-# Teams Meeting Analyser
-
-Fetches live transcripts from Microsoft Teams via the Microsoft Graph API and produces
-deep communication pattern analysis for one or more named participants.
-
-## When to Use This Skill
-
-- "Analyse [person]'s contribution to [meeting name]"
-- "What was decided in last Thursday's [meeting]?"
-- "How did [person] communicate in the [meeting] meeting?"
-- "Pull the transcript from [meeting name] and analyse it"
-- "Analyse this week's / last week's [recurring meeting name]"
-
-## Prerequisites
-
-- Microsoft 365 account authenticated via the mcp-o365 MCP server
-  (run accounts_add in Claude if not yet signed in)
-- Meeting must have had transcription enabled (Teams: ... -> Start transcription)
-
-## Step-by-Step Workflow
-
-### 0. Confirm signed-in account
-Call accounts_list to get the user's account. Use it as the account parameter in all calls.
-
-### 1. Find the calendar event
-    calendar_list_events(account="<from accounts_list>", start="<date>T00:00:00", end="<date>T23:59:59")
-Note the event's joinWebUrl.
-
-### 2. Get the online meeting ID
-    meetings_get_by_join_url(join_url="<joinWebUrl>", account="<account>")
-Note the id field.
-
-### 3. List transcripts
-    meetings_list_transcripts(meeting_id="<id>", account="<account>")
-Match by createdDateTime for recurring meetings.
-
-### 4. Download the transcript
-    meetings_get_transcript(meeting_id="<id>", transcript_id="<id>", account="<account>")
-
-### 5. Analyse the transcript
-Speaking Statistics, Communication Patterns, Key Decisions, Strengths, Growth Opportunities.
-
-## Output Format
-# Meeting Insights Summary - [Name]
-**Meeting:** [Name] | [Date] | [Duration]
-[Full analysis sections]
-
-## Saving Outputs
-Save to Desktop: meeting-analysis-[firstname]-YYYY-MM-DD.txt
-
-## Known Gotchas
-- Recurring meetings: filter meetings_list_transcripts by createdDateTime
-- No transcript = transcription was not started during the meeting
-- meetings_get_by_join_url only works if signed-in user organised the meeting
-
-## Example Prompts
-"Analyse last week's Weekly Medmin meeting for Sarah"
-"What was decided in Thursday's team meeting?"
-"How did James communicate in the board meeting?"
-'@
-
-Set-Content -Path (Join-Path $skillDir "SKILL.md") -Value $skillContent -Encoding UTF8
-Ok "Teams Meeting Analyser skill installed"
-
-# ── Skill 2: Medmin Guide ──────────────────────────────────────────────────────
-$guideDir = Join-Path $HOME ".claude\plugins\cache\local-plugins\$PluginName\$PluginVersion\skills\medmin-guide"
-New-Item -ItemType Directory -Force -Path $guideDir | Out-Null
-
-$guideContent = @'
----
-name: medmin-guide
-description: Shows the user a friendly guide to all Medmin tools connected to Claude — what's available, how to use it, and example prompts. Use when the user asks what Claude can do, how the meeting analyser works, what tools are connected, or asks for help getting started.
----
-
-# Medmin Guide
-
-When this skill is invoked, present the following guide to the user exactly as formatted below. Do not summarise it — show it in full.
-
----
-
-## What Claude can do for you
-
-Claude is connected to your **Microsoft 365** account and can read your calendar, emails, files, and Teams meeting transcripts — all processed privately on your device.
-
----
-
-### Teams Meeting Analyser
-
-Fetches live transcripts from your recorded Teams meetings and produces a detailed communication analysis for any participant.
-
-**Before you start — check you are signed in:**
-Ask Claude: "am I signed in to Microsoft 365?"
-
-If not signed in yet:
-1. Ask Claude: accounts_add
-2. Open the link shown and sign in with your medmin.co.uk account
-3. Ask Claude: accounts_complete
-
-**How to start a meeting analysis:**
-
-- Analyse one person: "Analyse last week's [meeting name] for [name]"
-- Find out what was decided: "What was decided in Thursday's [meeting name]?"
-- Analyse everyone: "Analyse everyone in this week's [meeting name]"
-- Check communication style: "How did [name] communicate in yesterday's meeting?"
-
-**What you get back:**
-- Speaking ratios and word counts per participant
-- Communication patterns: directness, conflict avoidance, active listening, facilitation
-- Verbatim quotes with timestamps and coaching suggestions
-- Key decisions and action items with owners
-- Strengths and growth opportunities
-
-**Requirements:**
-- The meeting must have had Start transcription active during the call
-  (In Teams: click ... -> Start transcription before your meeting begins)
-- You must have organised the meeting — attendee-only access does not work
-
-**Example prompts:**
-"Analyse last Monday's weekly standup for Sarah"
-"What action items came out of Thursday's board meeting?"
-"How did James communicate in the product review?"
-"Analyse everyone's contribution to this week's all-hands"
-
-Results are saved to your Desktop as: meeting-analysis-[firstname]-YYYY-MM-DD.txt
-
----
-
-### HubSpot Integration (coming soon)
-
-Once connected, Claude will be able to:
-- Save meeting analysis directly to a contact's HubSpot record
-- Pull up a contact's history before a meeting
-- Log notes to a contact from a conversation
-
-Example prompts once connected:
-"Analyse Tuesday's meeting with John Smith and save it to his HubSpot record"
-"What do we know about Sarah Jones before my call with her tomorrow?"
-"Log a note on the Acme account — we agreed to push the demo to next week"
-
----
-
-### Tips
-
-- Recurring meetings: just say "last Tuesday's" or "the 10th March" version
-- Multiple accounts: tell Claude which one — "use my medmin.co.uk account"
-- No transcript found: transcription must have been started during the meeting
-- Re-run this guide: ask "show me the Medmin guide" or "what can Claude do?"
-'@
-
-Set-Content -Path (Join-Path $guideDir "SKILL.md") -Value $guideContent -Encoding UTF8
-Ok "Medmin Guide skill installed"
-
-$pluginsJson  = Join-Path $HOME ".claude\plugins\installed_plugins.json"
-$plugins      = if (Test-Path $pluginsJson) { Get-Content $pluginsJson -Raw | ConvertFrom-Json }
-                else { [PSCustomObject]@{ version = 2; plugins = [PSCustomObject]@{} } }
-$key          = "$PluginName@local-plugins"
-$now          = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z")
-$installPath  = Join-Path $HOME ".claude\plugins\cache\local-plugins\$PluginName\$PluginVersion"
-$pluginRecord = @([PSCustomObject]@{ scope="user"; installPath=$installPath; version=$PluginVersion; installedAt=$now; lastUpdated=$now })
-
-if ($plugins.plugins.PSObject.Properties[$key]) { $plugins.plugins.$key = $pluginRecord }
-else { $plugins.plugins | Add-Member -NotePropertyName $key -NotePropertyValue $pluginRecord }
-
-$plugins | ConvertTo-Json -Depth 10 | Set-Content $pluginsJson -Encoding UTF8
-Ok "Teams Meeting Analyser skill installed"
+$config | ConvertTo-Json -Depth 10 | Set-Content $ClaudeConfig -Encoding UTF8
+Ok ($(if ($existed) { "Updated" } else { "Registered" }) + " mcp-o365 in Claude desktop app")
 
 # ── Sign-in wizard ─────────────────────────────────────────────────────────────
 Header "Signing in to Microsoft 365"
@@ -409,7 +193,8 @@ $env:AZURE_TENANT_ID = $AzureTenantId
 node $DistFile --setup
 
 Write-Host ""
-Ok "All done! Restart Claude Code and you're ready."
+Ok "All done! Restart the Claude app and you're ready."
+Write-Host "  Open Claude and ask: `"what can you do?`"" -ForegroundColor White
 Write-Host ""
 Stop-Transcript | Out-Null
 Read-Host "  Press Enter to close"

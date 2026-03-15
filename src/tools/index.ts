@@ -8,6 +8,7 @@ import { registerFilesTools } from './files';
 import { registerContactsTools } from './contacts';
 import { registerUserTools } from './user';
 import { registerMeetingsTools } from './meetings';
+import { registerGuideTools } from './guide';
 
 export function registerAllTools(
   server: McpServer,
@@ -21,4 +22,5 @@ export function registerAllTools(
   registerContactsTools(server, getGraph);
   registerUserTools(server, getGraph);
   registerMeetingsTools(server, getGraph);
+  registerGuideTools(server);
 }
