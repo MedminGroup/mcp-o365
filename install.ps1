@@ -199,10 +199,10 @@ Header "Configuring Claude Code"
 $config  = Get-Content $claudeJson -Raw | ConvertFrom-Json
 $existed = $false
 
-if (-not ($config.PSObject.Properties.Name -contains "mcpServers")) {
+if (-not $config.PSObject.Properties["mcpServers"]) {
     $config | Add-Member -NotePropertyName "mcpServers" -NotePropertyValue ([PSCustomObject]@{})
 }
-if ($config.mcpServers.PSObject.Properties.Name -contains "mcp-o365") { $existed = $true }
+if ($config.mcpServers.PSObject.Properties["mcp-o365"]) { $existed = $true }
 
 $entry = [PSCustomObject]@{
     type    = "stdio"
@@ -301,7 +301,7 @@ $now          = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z"
 $installPath  = Join-Path $HOME ".claude\plugins\cache\local-plugins\$PluginName\$PluginVersion"
 $pluginRecord = @([PSCustomObject]@{ scope="user"; installPath=$installPath; version=$PluginVersion; installedAt=$now; lastUpdated=$now })
 
-if ($plugins.plugins.PSObject.Properties.Name -contains $key) { $plugins.plugins.$key = $pluginRecord }
+if ($plugins.plugins.PSObject.Properties[$key]) { $plugins.plugins.$key = $pluginRecord }
 else { $plugins.plugins | Add-Member -NotePropertyName $key -NotePropertyValue $pluginRecord }
 
 $plugins | ConvertTo-Json -Depth 10 | Set-Content $pluginsJson -Encoding UTF8
