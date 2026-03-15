@@ -1,0 +1,41 @@
+{
+  "name": "@syntelic/mcp-o365",
+  "version": "1.0.0",
+  "description": "MCP server for Microsoft 365 — read and write calendar, mail, files, and contacts via Microsoft Graph API",
+  "author": "Syntelic",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GITHUB_ORG/mcp-o365.git"
+  },
+  "keywords": ["mcp", "microsoft365", "office365", "graph", "calendar", "outlook", "onedrive"],
+  "bin": {
+    "mcp-o365": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": ["dist", "README.md"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\""
+  },
+  "dependencies": {
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "@modelcontextprotocol/sdk": "^1.10.2",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.30",
+    "@typescript-eslint/eslint-plugin": "^8.29.0",
+    "@typescript-eslint/parser": "^8.29.0",
+    "eslint": "^9.23.0",
+    "prettier": "^3.5.3",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.2"
+  }
+}
