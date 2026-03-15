@@ -17,7 +17,7 @@ set -euo pipefail
 # ── GitHub repo (owner/name) ───────────────────────────────────────────────────
 # Set this once after creating the repo, then all users get the latest release
 # automatically via the curl | bash one-liner above.
-GITHUB_REPO="GITHUB_ORG/mcp-o365"   # <── update before first release
+GITHUB_REPO="MedminGroup/mcp-o365"
 
 # ── Medmin Azure app registration ─────────────────────────────────────────────
 AZURE_CLIENT_ID="1cef0b95-5220-4bfa-a2f4-661da5cfcc55"
