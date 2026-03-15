@@ -185,33 +185,31 @@ if (-not $ClaudeConfigDir) {
 $ClaudeConfig = Join-Path $ClaudeConfigDir "claude_desktop_config.json"
 New-Item -ItemType Directory -Force -Path $ClaudeConfigDir | Out-Null
 
-# Create a minimal config if it doesn't exist
-if (-not (Test-Path $ClaudeConfig)) {
-    Info "Creating new config at $ClaudeConfig"
-    '{"mcpServers":{}}' | Set-Content $ClaudeConfig -Encoding UTF8
-}
-
-$config = Get-Content $ClaudeConfig -Raw | ConvertFrom-Json
-$existed = $false
-
-if (-not $config.PSObject.Properties["mcpServers"]) {
-    $config | Add-Member -NotePropertyName "mcpServers" -NotePropertyValue ([PSCustomObject]@{})
-}
-if ($config.mcpServers.PSObject.Properties["mcp-o365"]) { $existed = $true }
-
 # Resolve full path to node.exe so Claude desktop app doesn't need node on its PATH
 $NodeExePath = (Get-Command node).Source
 
-$entry = [PSCustomObject]@{
-    command = $NodeExePath
-    args    = @($DistFile)
-    env     = [PSCustomObject]@{ AZURE_CLIENT_ID = $AzureClientId; AZURE_TENANT_ID = $AzureTenantId }
-}
-if ($existed) { $config.mcpServers."mcp-o365" = $entry }
-else          { $config.mcpServers | Add-Member -NotePropertyName "mcp-o365" -NotePropertyValue $entry }
+# Use node.js to read/write the config — JSON.stringify always produces valid JSON,
+# avoiding the known quirks of PowerShell's ConvertTo-Json with nested objects/arrays.
+$writeScript = Join-Path $env:TEMP "mcp-o365-write-config.js"
+@"
+const fs = require('fs');
+const [configPath, nodeExe, distFile, clientId, tenantId] = process.argv.slice(2);
+let config = {};
+try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch (e) {}
+if (!config.mcpServers) config.mcpServers = {};
+const existed = !!config.mcpServers['mcp-o365'];
+config.mcpServers['mcp-o365'] = {
+  command: nodeExe,
+  args: [distFile],
+  env: { AZURE_CLIENT_ID: clientId, AZURE_TENANT_ID: tenantId }
+};
+fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+console.log((existed ? 'Updated' : 'Registered') + ' mcp-o365 in Claude desktop app');
+"@ | Set-Content $writeScript -Encoding UTF8
 
-$config | ConvertTo-Json -Depth 10 | Set-Content $ClaudeConfig -Encoding UTF8
-Ok ($(if ($existed) { "Updated" } else { "Registered" }) + " mcp-o365 in Claude desktop app")
+node $writeScript $ClaudeConfig $NodeExePath $DistFile $AzureClientId $AzureTenantId
+Remove-Item $writeScript -Force
+Ok "mcp-o365 registered in Claude desktop app ($ClaudeConfig)"
 
 # ── Sign-in wizard ─────────────────────────────────────────────────────────────
 Header "Signing in to Microsoft 365"
