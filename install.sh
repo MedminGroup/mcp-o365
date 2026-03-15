@@ -8,8 +8,7 @@
 # Dev / testing (local build):
 #   bash install.sh --source /path/to/mcp-O365/dist/index.js
 #
-# Installs Node.js automatically if missing (via nvm, no admin required).
-# Requires: Claude Code
+# Installs Node.js and Claude Code CLI automatically if missing (no admin required).
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -70,9 +69,25 @@ else
   ok "Node.js $(node --version)"
 fi
 
-# ── Claude Code ────────────────────────────────────────────────────────────────
+# ── Claude Code CLI ───────────────────────────────────────────────────────────
+header "Checking Claude Code CLI"
+
+if ! command -v claude &>/dev/null; then
+  info "Installing Claude Code CLI (this may take a minute)..."
+  npm install -g @anthropic-ai/claude-code
+  command -v claude &>/dev/null || error "claude command not found after npm install."
+  ok "Claude Code CLI installed: $(claude --version 2>/dev/null | head -1)"
+else
+  ok "Claude Code CLI: $(claude --version 2>/dev/null | head -1)"
+fi
+
+# Config is created on first launch — create a minimal one if not yet present
 CLAUDE_JSON="$HOME/.claude.json"
-[[ -f "$CLAUDE_JSON" ]] || error "Claude Code not found ($CLAUDE_JSON missing). Install Claude Code first: https://claude.ai/download"
+if [[ ! -f "$CLAUDE_JSON" ]]; then
+  info "Config not yet created — writing minimal config at $CLAUDE_JSON"
+  echo '{"mcpServers":{}}' > "$CLAUDE_JSON"
+  ok "Created $CLAUDE_JSON"
+fi
 
 # ── Download / copy MCP server ─────────────────────────────────────────────────
 header "Installing MCP server"
