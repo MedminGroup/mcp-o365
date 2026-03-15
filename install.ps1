@@ -170,8 +170,11 @@ if (-not $config.PSObject.Properties["mcpServers"]) {
 }
 if ($config.mcpServers.PSObject.Properties["mcp-o365"]) { $existed = $true }
 
+# Resolve full path to node.exe so Claude desktop app doesn't need node on its PATH
+$NodeExePath = (Get-Command node).Source
+
 $entry = [PSCustomObject]@{
-    command = "node"
+    command = $NodeExePath
     args    = @($DistFile)
     env     = [PSCustomObject]@{ AZURE_CLIENT_ID = $AzureClientId; AZURE_TENANT_ID = $AzureTenantId }
 }

@@ -112,15 +112,18 @@ if [[ ! -f "$CLAUDE_CONFIG" ]]; then
   echo '{"mcpServers":{}}' > "$CLAUDE_CONFIG"
 fi
 
-python3 - "$CLAUDE_CONFIG" "$DIST_FILE" "$AZURE_CLIENT_ID" "$AZURE_TENANT_ID" <<'PYEOF'
+# Resolve full path to node so Claude desktop app doesn't need node on its PATH
+NODE_BIN="$(command -v node)"
+
+python3 - "$CLAUDE_CONFIG" "$DIST_FILE" "$AZURE_CLIENT_ID" "$AZURE_TENANT_ID" "$NODE_BIN" <<'PYEOF'
 import json, sys
-config_path, dist_file, client_id, tenant_id = sys.argv[1:]
+config_path, dist_file, client_id, tenant_id, node_bin = sys.argv[1:]
 with open(config_path) as f:
     config = json.load(f)
 config.setdefault("mcpServers", {})
 existed = "mcp-o365" in config["mcpServers"]
 config["mcpServers"]["mcp-o365"] = {
-    "command": "node",
+    "command": node_bin,
     "args": [dist_file],
     "env": {"AZURE_CLIENT_ID": client_id, "AZURE_TENANT_ID": tenant_id}
 }
