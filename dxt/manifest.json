@@ -2,7 +2,7 @@
   "dxt_version": "0.1",
   "name": "medmin-m365",
   "display_name": "Medmin Microsoft 365",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Connect Claude to your Medmin Microsoft 365 account — calendar, email, and Teams meeting transcripts.",
   "long_description": "Gives Claude access to your Microsoft 365 account via the Microsoft Graph API.\n\nAfter installing, open Claude and ask: **\"set up my Medmin M365 connection\"** — Claude will walk you through signing in.\n\n**What Claude can do once connected:**\n- Fetch and analyse Teams meeting transcripts\n- Search your calendar and find meetings\n- Search your email\n- Show a full guide to available tools\n\n**Requirements:** You must have organised the meeting in Teams and have had transcription active during the call.",
   "author": {

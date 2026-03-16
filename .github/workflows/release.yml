@@ -31,6 +31,7 @@ jobs:
       - name: Build DXT extension
         run: |
           npm install -g @anthropic-ai/dxt
+          mkdir -p dxt/server
           cp dist/index.js dxt/server/index.js
           dxt pack dxt medmin-m365.dxt
 
