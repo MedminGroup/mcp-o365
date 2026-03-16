@@ -28,12 +28,19 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Build DXT extension
+        run: |
+          npm install -g @anthropic-ai/dxt
+          cp dist/index.js dxt/server/index.js
+          dxt pack dxt medmin-m365.dxt
+
       - name: Create release and upload assets
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
           generate_release_notes: true
           files: |
+            medmin-m365.dxt
             dist/index.js
             install.sh
             install.ps1

@@ -1,0 +1,50 @@
+{
+  "dxt_version": "0.1",
+  "name": "medmin-m365",
+  "display_name": "Medmin Microsoft 365",
+  "version": "1.0.15",
+  "description": "Connect Claude to your Medmin Microsoft 365 account — calendar, email, and Teams meeting transcripts.",
+  "long_description": "Gives Claude access to your Microsoft 365 account via the Microsoft Graph API.\n\nAfter installing, open Claude and ask: **\"set up my Medmin M365 connection\"** — Claude will walk you through signing in.\n\n**What Claude can do once connected:**\n- Fetch and analyse Teams meeting transcripts\n- Search your calendar and find meetings\n- Search your email\n- Show a full guide to available tools\n\n**Requirements:** You must have organised the meeting in Teams and have had transcription active during the call.",
+  "author": {
+    "name": "Medmin",
+    "email": "support@medmin.co.uk",
+    "url": "https://medmin.co.uk"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MedminGroup/mcp-o365"
+  },
+  "license": "MIT",
+  "keywords": ["microsoft365", "teams", "transcripts", "calendar", "email", "medmin"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {
+        "AZURE_CLIENT_ID": "1cef0b95-5220-4bfa-a2f4-661da5cfcc55",
+        "AZURE_TENANT_ID": "389366c7-63a8-42d0-8a1f-1df099d3eec1"
+      }
+    }
+  },
+  "tools": [
+    { "name": "accounts_list",             "description": "List signed-in Microsoft 365 accounts" },
+    { "name": "accounts_add",              "description": "Sign in to a Microsoft 365 account via device-code flow" },
+    { "name": "accounts_complete",         "description": "Complete Microsoft 365 sign-in after visiting the browser link" },
+    { "name": "accounts_remove",           "description": "Remove a signed-in Microsoft 365 account" },
+    { "name": "calendar_list_events",      "description": "List calendar events in a date range" },
+    { "name": "mail_search",               "description": "Search email by keyword, sender, or date" },
+    { "name": "meetings_get_by_join_url",  "description": "Look up a Teams online meeting by its join URL" },
+    { "name": "meetings_list_transcripts", "description": "List all transcripts for a Teams meeting" },
+    { "name": "meetings_get_transcript",   "description": "Download a Teams meeting transcript in VTT format" },
+    { "name": "medmin_guide",              "description": "Show the Medmin guide — what Claude can do and how to use it" }
+  ],
+  "compatibility": {
+    "claude_desktop": ">=1.0.0",
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  }
+}
