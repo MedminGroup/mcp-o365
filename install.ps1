@@ -169,6 +169,40 @@ if (-not $ClaudeExe) {
     Fail "Claude not found — cannot continue."
 }
 
+# ── Enable Windows Developer Mode (required for Claude extensions) ─────────────
+Header "Checking Windows Developer Mode"
+
+$devModeKey  = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+$devModeVal  = Get-ItemProperty -Path $devModeKey -Name "AllowDevelopmentWithoutDevLicense" -ErrorAction SilentlyContinue
+$devModeOn   = ($devModeVal -and $devModeVal.AllowDevelopmentWithoutDevLicense -eq 1)
+
+if ($devModeOn) {
+    Ok "Windows Developer Mode is already enabled"
+} else {
+    Info "Windows Developer Mode is required for Claude extensions."
+    Info "A UAC prompt will appear — click Yes to allow the change..."
+
+    $regCmd = @"
+Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name 'AllowDevelopmentWithoutDevLicense' -Value 1 -Type DWord -Force
+Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name 'AllowAllTrustedApps' -Value 1 -Type DWord -Force
+"@
+    $tmpReg = Join-Path $env:TEMP "enable-devmode.ps1"
+    Set-Content $tmpReg -Value $regCmd -Encoding UTF8
+    Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$tmpReg`"" -Wait
+    Remove-Item $tmpReg -Force -ErrorAction SilentlyContinue
+
+    # Verify
+    $devModeVal = Get-ItemProperty -Path $devModeKey -Name "AllowDevelopmentWithoutDevLicense" -ErrorAction SilentlyContinue
+    if ($devModeVal -and $devModeVal.AllowDevelopmentWithoutDevLicense -eq 1) {
+        Ok "Windows Developer Mode enabled"
+    } else {
+        Warn "Could not enable automatically. Please enable it manually:"
+        Warn "  Settings -> System -> For developers -> Developer Mode -> On"
+        Warn "Then re-run this installer."
+        Fail "Developer Mode not enabled"
+    }
+}
+
 # ── Register .dxt file association ─────────────────────────────────────────────
 Header "Registering .dxt file type"
 
