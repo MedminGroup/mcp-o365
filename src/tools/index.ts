@@ -10,17 +10,29 @@ import { registerUserTools } from './user';
 import { registerMeetingsTools } from './meetings';
 import { registerGuideTools } from './guide';
 
+type RegisterFn = () => void;
+
+function safeRegister(name: string, fn: RegisterFn): void {
+  try {
+    fn();
+    process.stderr.write(`[mcp-o365] registered: ${name}\n`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[mcp-o365] FAILED to register ${name}: ${msg}\n`);
+  }
+}
+
 export function registerAllTools(
   server: McpServer,
   accountManager: AccountManager,
   getGraph: (account?: string) => Client,
 ): void {
-  registerAccountsTools(server, accountManager);
-  registerCalendarTools(server, getGraph);
-  registerMailTools(server, getGraph);
-  registerFilesTools(server, getGraph);
-  registerContactsTools(server, getGraph);
-  registerUserTools(server, getGraph);
-  registerMeetingsTools(server, getGraph);
-  registerGuideTools(server);
+  safeRegister('accounts',  () => registerAccountsTools(server, accountManager));
+  safeRegister('calendar',  () => registerCalendarTools(server, getGraph));
+  safeRegister('mail',      () => registerMailTools(server, getGraph));
+  safeRegister('files',     () => registerFilesTools(server, getGraph));
+  safeRegister('contacts',  () => registerContactsTools(server, getGraph));
+  safeRegister('user',      () => registerUserTools(server, getGraph));
+  safeRegister('meetings',  () => registerMeetingsTools(server, getGraph));
+  safeRegister('guide',     () => registerGuideTools(server));
 }
