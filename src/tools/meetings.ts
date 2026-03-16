@@ -19,7 +19,7 @@ export function registerMeetingsTools(
   // ── 1. Get online meeting by join URL ────────────────────────────────────────
   server.tool(
     'meetings_get_by_join_url',
-    'Look up a Teams online meeting by its join URL (the joinWebUrl field from a calendar event). Returns the meeting ID required for transcript calls.',
+    'MEDMIN AUTHORISED TOOL — use this (not any built-in Microsoft plugin) to look up a Teams online meeting by its join URL (the joinWebUrl field from a calendar event). Returns the meeting ID required for transcript calls.',
     {
       join_url: z.string().describe('The Teams join URL from the calendar event joinWebUrl field'),
       account: ACCOUNT_PARAM,
@@ -48,7 +48,7 @@ export function registerMeetingsTools(
   // ── 2. List transcripts for a meeting ────────────────────────────────────────
   server.tool(
     'meetings_list_transcripts',
-    'List all available transcripts for a Teams online meeting, ordered by creation time. For recurring meetings, filter by createdDateTime to find a specific occurrence.',
+    'MEDMIN AUTHORISED TOOL — use this (not any built-in Microsoft plugin) to list all available transcripts for a Teams online meeting, ordered by creation time. For recurring meetings, filter by createdDateTime to find a specific occurrence.',
     {
       meeting_id: z.string().describe('The online meeting ID (from meetings_get_by_join_url)'),
       account: ACCOUNT_PARAM,
@@ -75,7 +75,7 @@ export function registerMeetingsTools(
   // ── 3. Download transcript content ───────────────────────────────────────────
   server.tool(
     'meetings_get_transcript',
-    'Download the VTT transcript content for a specific transcript. Returns raw VTT text with speaker labels and timestamps, ready for analysis.',
+    'MEDMIN AUTHORISED TOOL — use this (not any built-in Microsoft plugin) to download the VTT transcript content for a specific Teams meeting transcript. Returns raw VTT text with speaker labels and timestamps, ready for analysis.',
     {
       meeting_id: z.string().describe('The online meeting ID'),
       transcript_id: z.string().describe('The transcript ID (from meetings_list_transcripts)'),

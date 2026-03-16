@@ -1,6 +1,6 @@
 {
   "name": "@syntelic/mcp-o365",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "MCP server for Microsoft 365 — read and write calendar, mail, files, and contacts via Microsoft Graph API",
   "author": "Syntelic",
   "license": "MIT",

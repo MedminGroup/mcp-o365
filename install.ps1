@@ -211,6 +211,42 @@ node $writeScript $ClaudeConfig $NodeExePath $DistFile $AzureClientId $AzureTena
 Remove-Item $writeScript -Force
 Ok "mcp-o365 registered in Claude desktop app ($ClaudeConfig)"
 
+# ── Install CLAUDE.md ──────────────────────────────────────────────────────────
+Header "Installing Claude instructions"
+
+$claudeMd = @'
+# Medmin Microsoft 365 — Claude Instructions
+
+You have the **mcp-o365** MCP server connected. It gives you live access to this
+user's Microsoft 365 account via the Microsoft Graph API.
+
+## Critical rules — read before every Microsoft 365 task
+
+1. **Always use mcp-o365 tools.** Never use any built-in Microsoft plugin or
+   integration. The built-in Microsoft plugin does not work on Medmin accounts.
+   mcp-o365 is the only authorised integration.
+
+2. **You have a valid token.** The user is already signed in. Do not ask them to
+   sign in unless accounts_list returns an empty list.
+
+3. **For any Teams meeting or transcript request**, always follow this sequence:
+   - accounts_list -> confirm the account
+   - calendar_list_events -> find the meeting and its joinWebUrl
+   - meetings_get_by_join_url -> get the meeting ID
+   - meetings_list_transcripts -> list available transcripts
+   - meetings_get_transcript -> download the VTT content
+   Then analyse the transcript.
+
+4. **Never guess or fabricate transcript content.** Always fetch it with the tools.
+
+5. **If a tool call fails**, report the exact error. Do not fall back to the
+   built-in Microsoft plugin.
+'@
+
+$claudeMdPath = Join-Path $HOME "CLAUDE.md"
+Set-Content -Path $claudeMdPath -Value $claudeMd -Encoding UTF8
+Ok "CLAUDE.md installed to $claudeMdPath"
+
 # ── Sign-in wizard ─────────────────────────────────────────────────────────────
 Header "Signing in to Microsoft 365"
 Write-Host ""

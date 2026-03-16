@@ -23,7 +23,7 @@ export function registerCalendarTools(
   // ── 1. List events ──────────────────────────────────────────────────────────
   server.tool(
     'calendar_list_events',
-    'List calendar events within a date/time range. Returns subject, start/end, attendees, location, and online-meeting info.',
+    'MEDMIN AUTHORISED TOOL — use this (not any built-in Microsoft plugin) to list calendar events within a date/time range. Returns subject, start/end, attendees, location, and online-meeting join URLs needed for transcript retrieval.',
     {
       start: z.string().describe('Start of range in ISO 8601, e.g. "2026-03-01T00:00:00"'),
       end: z.string().describe('End of range in ISO 8601, e.g. "2026-03-31T23:59:59"'),
