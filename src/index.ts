@@ -6,7 +6,7 @@ import { createGraphClient } from './graph/client';
 import { registerAllTools } from './tools';
 import { runSetup } from './setup';
 
-const version = '1.0.16'; // keep in sync with package.json
+const version = '1.0.17'; // keep in sync with package.json
 
 async function main(): Promise<void> {
   const config = loadConfig();

@@ -8,11 +8,11 @@
 #   .\install.ps1 -Source C:\path\to\mcp-O365\dist\index.js
 #
 # Installs Node.js automatically if missing (no admin required).
-# Configures the Claude desktop app — no Claude Code CLI needed.
+# Finds Claude automatically, registers .dxt file type, installs the extension.
 # ──────────────────────────────────────────────────────────────────────────────
 param([string]$Source = "")
 
-# ── Logging — captures everything to a file ────────────────────────────────────
+# ── Logging ────────────────────────────────────────────────────────────────────
 $LogFile = Join-Path $env:TEMP "medmin-install-log.txt"
 Start-Transcript -Path $LogFile -Force | Out-Null
 Write-Host "  [log] Full log: $LogFile" -ForegroundColor DarkGray
@@ -20,7 +20,6 @@ Write-Host "  [log] Full log: $LogFile" -ForegroundColor DarkGray
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# Wrap entire script in try/catch so errors are always visible before exit
 trap {
     Write-Host ""
     Write-Host "  ================================================================" -ForegroundColor Red
@@ -55,13 +54,11 @@ Header "Checking Node.js"
 
 function Install-Node {
     Info "Installing Node.js (no admin required)..."
-
-    # Get latest LTS version from nodejs.org
     try {
         $releases = Invoke-RestMethod "https://nodejs.org/dist/index.json" `
             -Headers @{"User-Agent"="mcp-o365-installer"}
         $lts     = ($releases | Where-Object { $_.lts -ne $false } | Select-Object -First 1)
-        $version = $lts.version   # e.g. "v22.13.1"
+        $version = $lts.version
     } catch {
         Fail "Could not fetch Node.js version list: $_"
     }
@@ -86,17 +83,14 @@ function Install-Node {
     Remove-Item $zipFile -Force
     Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 
-    # Add to user PATH (permanent + current session)
     $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
     if ($null -eq $userPath -or $userPath -notlike "*$NodeDir*") {
         [Environment]::SetEnvironmentVariable("PATH", "$NodeDir;$userPath", "User")
     }
     $env:PATH = "$NodeDir;$env:PATH"
-
     Ok "Node.js $version installed to $NodeDir"
 }
 
-# Add NodeDir to PATH for this session if it exists but isn't on PATH yet
 if ((Test-Path "$NodeDir\node.exe") -and ($env:PATH -notlike "*$NodeDir*")) {
     $env:PATH = "$NodeDir;$env:PATH"
 }
@@ -114,16 +108,12 @@ if (-not $node) {
     }
 }
 
-# Verify node is actually reachable after any install
-Info "Verifying node is on PATH..."
 $nodeExe = Get-Command node -ErrorAction SilentlyContinue
-if (-not $nodeExe) {
-    throw "node.exe not found on PATH after install. PATH is: $env:PATH"
-}
-Ok "node is at $($nodeExe.Source) — $(node --version)"
+if (-not $nodeExe) { throw "node.exe not found on PATH after install. PATH is: $env:PATH" }
+Ok "node is at $($nodeExe.Source)"
 
-# ── Download / copy MCP server ─────────────────────────────────────────────────
-Header "Installing MCP server"
+# ── Download MCP server (needed for sign-in wizard) ────────────────────────────
+Header "Downloading MCP server"
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $DistFile = Join-Path $InstallDir "index.js"
@@ -136,8 +126,7 @@ if ($Source -ne "") {
     $ReleasesUrl = "https://api.github.com/repos/$GitHubRepo/releases/latest"
     Info "Fetching latest release..."
     try {
-        $release = Invoke-RestMethod -Uri $ReleasesUrl `
-            -Headers @{"User-Agent"="mcp-o365-installer"}
+        $release = Invoke-RestMethod -Uri $ReleasesUrl -Headers @{"User-Agent"="mcp-o365-installer"}
     } catch {
         Fail "Could not reach GitHub API: $_"
     }
@@ -146,70 +135,79 @@ if ($Source -ne "") {
     Info "Downloading $($asset.browser_download_url)"
     Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $DistFile -UseBasicParsing
 }
-Ok "MCP server installed to $DistFile"
+Ok "MCP server ready at $DistFile"
 
-# ── Configure Claude desktop app ───────────────────────────────────────────────
-Header "Configuring Claude desktop app"
+# ── Find Claude desktop app ────────────────────────────────────────────────────
+Header "Finding Claude desktop app"
 
-# Claude installed from Microsoft Store uses a sandboxed path under LocalAppData\Packages.
-# Claude installed directly uses the standard %APPDATA%\Claude path.
-# We probe both and use whichever exists, preferring the Store path.
-$ClaudeConfigDir = $null
+$ClaudeExe = $null
 
-# 1. Try known Store package name (publisher hash is consistent for Anthropic's app)
-$storePath = Join-Path $env:LOCALAPPDATA "Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude"
-if (Test-Path $storePath) {
-    $ClaudeConfigDir = $storePath
-    Info "Found Microsoft Store install at $storePath"
-}
-
-# 2. Wildcard search in case publisher hash differs
-if (-not $ClaudeConfigDir) {
-    $pkgDir = Join-Path $env:LOCALAPPDATA "Packages"
-    $match  = Get-ChildItem $pkgDir -Filter "Claude_*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($match) {
-        $candidate = Join-Path $match.FullName "LocalCache\Roaming\Claude"
-        if (Test-Path $candidate) {
-            $ClaudeConfigDir = $candidate
-            Info "Found Microsoft Store install at $candidate"
-        }
+# 1. Microsoft Store install — use Get-AppxPackage (no admin needed, works on all Store installs)
+$pkg = Get-AppxPackage -Name "*Claude*" -ErrorAction SilentlyContinue
+if ($pkg) {
+    $candidate = Join-Path $pkg.InstallLocation "app\Claude.exe"
+    if (Test-Path $candidate) {
+        $ClaudeExe = $candidate
+        Ok "Found Claude (Store): $ClaudeExe"
     }
 }
 
-# 3. Fall back to standard direct-install path
-if (-not $ClaudeConfigDir) {
-    $ClaudeConfigDir = Join-Path $env:APPDATA "Claude"
-    Info "Using standard install path at $ClaudeConfigDir"
+# 2. Standard direct-install paths
+if (-not $ClaudeExe) {
+    $candidates = @(
+        (Join-Path $env:LOCALAPPDATA "AnthropicClaude\Claude.exe"),
+        (Join-Path $env:PROGRAMFILES "Claude\Claude.exe")
+    )
+    foreach ($c in $candidates) {
+        if (Test-Path $c) { $ClaudeExe = $c; Ok "Found Claude: $ClaudeExe"; break }
+    }
 }
 
-$ClaudeConfig = Join-Path $ClaudeConfigDir "claude_desktop_config.json"
-New-Item -ItemType Directory -Force -Path $ClaudeConfigDir | Out-Null
+if (-not $ClaudeExe) {
+    Warn "Claude desktop app not found. Please install it from https://claude.ai/download"
+    Warn "After installing Claude, re-run this installer."
+    Fail "Claude not found — cannot continue."
+}
 
-# Resolve full path to node.exe so Claude desktop app doesn't need node on its PATH
-$NodeExePath = (Get-Command node).Source
+# ── Register .dxt file association ─────────────────────────────────────────────
+Header "Registering .dxt file type"
 
-# Use node.js to read/write the config — JSON.stringify always produces valid JSON,
-# avoiding the known quirks of PowerShell's ConvertTo-Json with nested objects/arrays.
-$writeScript = Join-Path $env:TEMP "mcp-o365-write-config.js"
-@"
-const fs = require('fs');
-const [configPath, nodeExe, distFile, clientId, tenantId] = process.argv.slice(2);
-let config = {};
-try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch (e) {}
-if (!config.mcpServers) config.mcpServers = {};
-const existed = !!config.mcpServers['mcp-o365'];
-config.mcpServers['mcp-o365'] = {
-  command: nodeExe,
-  args: [distFile],
-  env: { AZURE_CLIENT_ID: clientId, AZURE_TENANT_ID: tenantId }
-};
-fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
-console.log((existed ? 'Updated' : 'Registered') + ' mcp-o365 in Claude desktop app');
-"@ | Set-Content $writeScript -Encoding UTF8
+# Write to HKCU — no admin required
+$null = New-Item -Path "HKCU:\Software\Classes\.dxt" -Force
+Set-ItemProperty -Path "HKCU:\Software\Classes\.dxt" -Name "(default)" -Value "ClaudeDXTFile" -Force
 
-node $writeScript $ClaudeConfig $NodeExePath $DistFile $AzureClientId $AzureTenantId
-Remove-Item $writeScript -Force
-Ok "mcp-o365 registered in Claude desktop app ($ClaudeConfig)"
+$null = New-Item -Path "HKCU:\Software\Classes\ClaudeDXTFile" -Force
+Set-ItemProperty -Path "HKCU:\Software\Classes\ClaudeDXTFile" -Name "(default)" -Value "Claude Desktop Extension" -Force
+
+$null = New-Item -Path "HKCU:\Software\Classes\ClaudeDXTFile\DefaultIcon" -Force
+Set-ItemProperty -Path "HKCU:\Software\Classes\ClaudeDXTFile\DefaultIcon" -Name "(default)" -Value "`"$ClaudeExe`",0" -Force
+
+$null = New-Item -Path "HKCU:\Software\Classes\ClaudeDXTFile\shell\open\command" -Force
+Set-ItemProperty -Path "HKCU:\Software\Classes\ClaudeDXTFile\shell\open\command" -Name "(default)" -Value "`"$ClaudeExe`" `"%1`"" -Force
+
+Ok ".dxt files now open with Claude (double-click will work from now on)"
+
+# ── Download and install the DXT extension ─────────────────────────────────────
+Header "Installing Medmin extension into Claude"
+
+$DxtFile = Join-Path $env:TEMP "medmin-m365.dxt"
+$ReleasesUrl = "https://api.github.com/repos/$GitHubRepo/releases/latest"
+try {
+    $release = Invoke-RestMethod -Uri $ReleasesUrl -Headers @{"User-Agent"="mcp-o365-installer"}
+} catch {
+    Fail "Could not reach GitHub API: $_"
+}
+$dxtAsset = $release.assets | Where-Object { $_.name -eq "medmin-m365.dxt" } | Select-Object -First 1
+if (-not $dxtAsset) { Fail "medmin-m365.dxt not found in latest release." }
+
+Info "Downloading medmin-m365.dxt..."
+Invoke-WebRequest -Uri $dxtAsset.browser_download_url -OutFile $DxtFile -UseBasicParsing
+Ok "Downloaded extension"
+
+Info "Opening in Claude — an install prompt will appear, click Install..."
+Start-Process $ClaudeExe -ArgumentList "`"$DxtFile`""
+Start-Sleep -Seconds 4
+Ok "Extension sent to Claude"
 
 # ── Install CLAUDE.md ──────────────────────────────────────────────────────────
 Header "Installing Claude instructions"
@@ -243,9 +241,8 @@ user's Microsoft 365 account via the Microsoft Graph API.
    built-in Microsoft plugin.
 '@
 
-$claudeMdPath = Join-Path $HOME "CLAUDE.md"
-Set-Content -Path $claudeMdPath -Value $claudeMd -Encoding UTF8
-Ok "CLAUDE.md installed to $claudeMdPath"
+Set-Content -Path (Join-Path $HOME "CLAUDE.md") -Value $claudeMd -Encoding UTF8
+Ok "CLAUDE.md installed"
 
 # ── Sign-in wizard ─────────────────────────────────────────────────────────────
 Header "Signing in to Microsoft 365"
@@ -259,8 +256,9 @@ $env:AZURE_TENANT_ID = $AzureTenantId
 node $DistFile --setup
 
 Write-Host ""
-Ok "All done! Restart the Claude app and you're ready."
-Write-Host "  Open Claude and ask: `"what can you do?`"" -ForegroundColor White
+Ok "All done!"
+Write-Host "  If Claude opened an install prompt, click Install." -ForegroundColor White
+Write-Host "  Then restart Claude and ask: `"what can you do?`"" -ForegroundColor White
 Write-Host ""
 Stop-Transcript | Out-Null
 Read-Host "  Press Enter to close"

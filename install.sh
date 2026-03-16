@@ -93,46 +93,26 @@ fi
 
 ok "MCP server installed to $DIST_FILE"
 
-# ── Configure Claude desktop app ───────────────────────────────────────────────
-header "Configuring Claude desktop app"
+# ── Download and install the DXT extension ─────────────────────────────────────
+header "Installing Medmin extension into Claude"
 
-# Locate the Claude desktop app config directory
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/Claude"
-else
-  CLAUDE_CONFIG_DIR="$HOME/.config/Claude"
-fi
+RELEASES_API="https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+DXT_URL=$(curl -fsSL "$RELEASES_API" | python3 -c "
+import json,sys
+assets = json.load(sys.stdin).get('assets', [])
+match = next((a['browser_download_url'] for a in assets if a['name'] == 'medmin-m365.dxt'), None)
+if not match: raise SystemExit('medmin-m365.dxt not found in latest release')
+print(match)
+")
+DXT_FILE="$TMPDIR/medmin-m365.dxt"
+info "Downloading medmin-m365.dxt..."
+curl -fsSL "$DXT_URL" -o "$DXT_FILE"
+ok "Downloaded extension"
 
-CLAUDE_CONFIG="$CLAUDE_CONFIG_DIR/claude_desktop_config.json"
-mkdir -p "$CLAUDE_CONFIG_DIR"
-
-# Create a minimal config if it doesn't exist
-if [[ ! -f "$CLAUDE_CONFIG" ]]; then
-  info "Creating new config at $CLAUDE_CONFIG"
-  echo '{"mcpServers":{}}' > "$CLAUDE_CONFIG"
-fi
-
-# Resolve full path to node so Claude desktop app doesn't need node on its PATH
-NODE_BIN="$(command -v node)"
-
-python3 - "$CLAUDE_CONFIG" "$DIST_FILE" "$AZURE_CLIENT_ID" "$AZURE_TENANT_ID" "$NODE_BIN" <<'PYEOF'
-import json, sys
-config_path, dist_file, client_id, tenant_id, node_bin = sys.argv[1:]
-with open(config_path) as f:
-    config = json.load(f)
-config.setdefault("mcpServers", {})
-existed = "mcp-o365" in config["mcpServers"]
-config["mcpServers"]["mcp-o365"] = {
-    "command": node_bin,
-    "args": [dist_file],
-    "env": {"AZURE_CLIENT_ID": client_id, "AZURE_TENANT_ID": tenant_id}
-}
-with open(config_path, "w") as f:
-    json.dump(config, f, indent=2)
-print(("Updated" if existed else "Registered") + " mcp-o365.")
-PYEOF
-
-ok "mcp-o365 registered in Claude desktop app"
+info "Opening in Claude — an install prompt will appear, click Install..."
+open -a "Claude" "$DXT_FILE" 2>/dev/null || warn "Could not open Claude automatically. Open $DXT_FILE manually."
+sleep 3
+ok "Extension sent to Claude"
 
 # ── Install CLAUDE.md ──────────────────────────────────────────────────────────
 header "Installing Claude instructions"
